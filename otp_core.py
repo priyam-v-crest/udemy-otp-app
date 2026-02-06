@@ -46,57 +46,70 @@ otp_state = {
 
 
 def get_gmail_service():
+    # ---- STREAMLIT SESSION GUARD ----
+    if "gmail_service" in st.session_state:
+        return st.session_state["gmail_service"]
+
     creds = None
 
-    # 1. Load cached token if present
+    # ---- LOAD TOKEN IF IT EXISTS ----
     if os.path.exists("token.json"):
         creds = Credentials.from_authorized_user_file("token.json", SCOPES)
 
-    # 2. If token valid → done
-    if creds and creds.valid:
-        return build("gmail", "v1", credentials=creds)
-
-    # 3. If expired but refreshable
+    # ---- REFRESH TOKEN IF POSSIBLE ----
     if creds and creds.expired and creds.refresh_token:
         creds.refresh(Request())
         with open("token.json", "w") as token:
             token.write(creds.to_json())
-        return build("gmail", "v1", credentials=creds)
 
-    # 4. FIRST-TIME AUTH (Streamlit Cloud safe)
+    # ---- IF TOKEN VALID, BUILD SERVICE ----
+    if creds and creds.valid:
+        service = build("gmail", "v1", credentials=creds)
+        st.session_state["gmail_service"] = service
+        return service
+
+    # ---- FIRST-TIME AUTH ONLY ----
     creds_dict = json.loads(st.secrets["gmail"]["credentials"])
+    redirect_uri = st.secrets["gmail"]["redirect_uri"]
 
     flow = InstalledAppFlow.from_client_config(creds_dict, SCOPES)
+    flow.redirect_uri = redirect_uri
 
-    # ✅ redirect_uri MUST be set AFTER flow creation
-    flow.redirect_uri = st.secrets["gmail"]["redirect_uri"]
-
-    auth_url, _ = flow.authorization_url(
-        prompt="consent",
-        access_type="offline",
-        include_granted_scopes="true"
-    )
+    if "auth_url" not in st.session_state:
+        auth_url, _ = flow.authorization_url(
+            access_type="offline",
+            prompt="consent"
+        )
+        st.session_state["auth_url"] = auth_url
 
     st.warning("🔐 One-time Google authorization required")
     st.write("1️⃣ Open this link in a new tab:")
-    st.code(auth_url)
+    st.code(st.session_state["auth_url"])
 
     auth_code = st.text_input(
-        "2️⃣ Paste the authorization code here and press Enter",
+        "2️⃣ Paste the authorization code here",
+        key="auth_code",
         type="password"
     )
 
     if not auth_code:
         st.stop()
 
+    # ---- EXCHANGE CODE FOR TOKEN ----
     flow.fetch_token(code=auth_code)
     creds = flow.credentials
 
     with open("token.json", "w") as token:
         token.write(creds.to_json())
 
-    st.success("✅ Authorization complete. Reloading app…")
-    st.experimental_rerun()
+    service = build("gmail", "v1", credentials=creds)
+
+    # ---- STORE SERVICE IN SESSION (THIS IS THE KEY FIX) ----
+    st.session_state["gmail_service"] = service
+    st.success("✅ Google authorization complete")
+
+    return service
+
 
 def get_label_id(service, label_name):
     labels = service.users().labels().list(userId="me").execute().get("labels", [])
@@ -262,6 +275,7 @@ def get_latest_otp_for_alias(requested_alias):
         "alias": alias,
         "age": int(age_minutes)
     }
+
 
 
 
