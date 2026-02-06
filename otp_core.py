@@ -52,20 +52,23 @@ def get_gmail_service():
     if os.path.exists("token.json"):
         creds = Credentials.from_authorized_user_file("token.json", SCOPES)
 
-    # If token invalid or missing → login once
+    # If token missing or invalid → authenticate once
     if not creds or not creds.valid:
         if creds and creds.expired and creds.refresh_token:
             creds.refresh(Request())
         else:
             creds_dict = json.loads(st.secrets["gmail"]["credentials"])
             flow = InstalledAppFlow.from_client_config(creds_dict, SCOPES)
-            creds = flow.run_local_server(port=0)
+
+            # IMPORTANT: Streamlit Cloud fix
+            creds = flow.run_console()
 
         # Save token for reuse
         with open("token.json", "w") as token:
             token.write(creds.to_json())
 
     return build("gmail", "v1", credentials=creds)
+
 
 
 def get_label_id(service, label_name):
@@ -232,3 +235,4 @@ def get_latest_otp_for_alias(requested_alias):
         "alias": alias,
         "age": int(age_minutes)
     }
+
