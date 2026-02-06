@@ -48,26 +48,51 @@ otp_state = {
 def get_gmail_service():
     creds = None
 
-    # Load cached token if present
+    # 1. Load existing token if present
     if os.path.exists("token.json"):
         creds = Credentials.from_authorized_user_file("token.json", SCOPES)
 
-    # If token missing or invalid → authenticate once
-    if not creds or not creds.valid:
-        if creds and creds.expired and creds.refresh_token:
-            creds.refresh(Request())
-        else:
-            creds_dict = json.loads(st.secrets["gmail"]["credentials"])
-            flow = InstalledAppFlow.from_client_config(creds_dict, SCOPES)
+    # 2. If token valid → done
+    if creds and creds.valid:
+        return build("gmail", "v1", credentials=creds)
 
-            # IMPORTANT: Streamlit Cloud fix
-            creds = flow.run_console()
-
-        # Save token for reuse
+    # 3. If expired but refreshable
+    if creds and creds.expired and creds.refresh_token:
+        creds.refresh(Request())
         with open("token.json", "w") as token:
             token.write(creds.to_json())
+        return build("gmail", "v1", credentials=creds)
 
-    return build("gmail", "v1", credentials=creds)
+    # 4. FIRST-TIME AUTH (manual, Streamlit-safe)
+    creds_dict = json.loads(st.secrets["gmail"]["credentials"])
+    flow = InstalledAppFlow.from_client_config(creds_dict, SCOPES)
+
+    auth_url, _ = flow.authorization_url(
+        prompt="consent",
+        access_type="offline"
+    )
+
+    st.warning("🔐 One-time Google authorization required")
+    st.write("1️⃣ Open this link in a new tab:")
+    st.code(auth_url)
+
+    auth_code = st.text_input(
+        "2️⃣ Paste the authorization code here and press Enter",
+        type="password"
+    )
+
+    if not auth_code:
+        st.stop()
+
+    flow.fetch_token(code=auth_code)
+    creds = flow.credentials
+
+    with open("token.json", "w") as token:
+        token.write(creds.to_json())
+
+    st.success("✅ Authorization complete. You can now request OTPs.")
+    st.experimental_rerun()
+
 
 
 
@@ -235,4 +260,5 @@ def get_latest_otp_for_alias(requested_alias):
         "alias": alias,
         "age": int(age_minutes)
     }
+
 
