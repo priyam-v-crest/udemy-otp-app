@@ -65,12 +65,14 @@ def get_gmail_service():
 
     # 4. FIRST-TIME AUTH (manual, Streamlit-safe)
     creds_dict = json.loads(st.secrets["gmail"]["credentials"])
-    flow = InstalledAppFlow.from_client_config(creds_dict, SCOPES)
-
+    flow.redirect_uri = st.secrets["gmail"]["redirect_uri"]
+    
     auth_url, _ = flow.authorization_url(
         prompt="consent",
-        access_type="offline"
+        access_type="offline",
+        include_granted_scopes="true"
     )
+
 
     st.warning("🔐 One-time Google authorization required")
     st.write("1️⃣ Open this link in a new tab:")
@@ -260,5 +262,6 @@ def get_latest_otp_for_alias(requested_alias):
         "alias": alias,
         "age": int(age_minutes)
     }
+
 
 
