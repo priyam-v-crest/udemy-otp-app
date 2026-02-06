@@ -48,7 +48,7 @@ otp_state = {
 def get_gmail_service():
     creds = None
 
-    # 1. Load existing token if present
+    # 1. Load cached token if present
     if os.path.exists("token.json"):
         creds = Credentials.from_authorized_user_file("token.json", SCOPES)
 
@@ -63,16 +63,19 @@ def get_gmail_service():
             token.write(creds.to_json())
         return build("gmail", "v1", credentials=creds)
 
-    # 4. FIRST-TIME AUTH (manual, Streamlit-safe)
+    # 4. FIRST-TIME AUTH (Streamlit Cloud safe)
     creds_dict = json.loads(st.secrets["gmail"]["credentials"])
+
+    flow = InstalledAppFlow.from_client_config(creds_dict, SCOPES)
+
+    # ✅ redirect_uri MUST be set AFTER flow creation
     flow.redirect_uri = st.secrets["gmail"]["redirect_uri"]
-    
+
     auth_url, _ = flow.authorization_url(
         prompt="consent",
         access_type="offline",
         include_granted_scopes="true"
     )
-
 
     st.warning("🔐 One-time Google authorization required")
     st.write("1️⃣ Open this link in a new tab:")
@@ -92,11 +95,8 @@ def get_gmail_service():
     with open("token.json", "w") as token:
         token.write(creds.to_json())
 
-    st.success("✅ Authorization complete. You can now request OTPs.")
+    st.success("✅ Authorization complete. Reloading app…")
     st.experimental_rerun()
-
-
-
 
 def get_label_id(service, label_name):
     labels = service.users().labels().list(userId="me").execute().get("labels", [])
@@ -262,6 +262,7 @@ def get_latest_otp_for_alias(requested_alias):
         "alias": alias,
         "age": int(age_minutes)
     }
+
 
 
 
